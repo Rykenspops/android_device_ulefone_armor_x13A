@@ -1,0 +1,9 @@
+  download-artifact:
+    needs: build-twrp
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download built recovery
+        uses: actions/download-artifact@v4
+        with:
+          name: recovery-Armor_X13
+          path: ./built-recovery
