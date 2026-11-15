@@ -1,0 +1,76 @@
+name: TWRP Recovery Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-twrp:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      TZ: UTC
+      DEVICE: Armor_X13
+      VENDOR: ulefone
+
+    steps:
+      - name: Maximize build space
+        shell: bash
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison build-essential ccache curl flex g++-multilib gcc-multilib \
+            git git-lfs gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev \
+            lib32z1-dev libelf-dev liblz4-tool libncurses5-dev libsdl1.2-dev \
+            libssl-dev libxml2-utils lzop pngcrush rsync schedtool squashfs-tools \
+            unzip zip zlib1g-dev
+
+      - name: Install repo tool
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.bin"
+          curl -L https://storage.googleapis.com/git-repo-downloads/repo > "$HOME/.bin/repo"
+          chmod a+x "$HOME/.bin/repo"
+          echo "$HOME/.bin" >> "$GITHUB_PATH"
+
+      - name: Initialize TWRP source
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/twrp"
+          cd "$GITHUB_WORKSPACE/twrp"
+          repo init -u https://github.com/minimal-manifest-twrp/platform_manifest.git -b twrp-12.1 --depth=1
+          repo sync -c -j"$(nproc)" --force-sync
+
+      - name: Checkout device tree into TWRP source
+        uses: actions/checkout@v4
+        with:
+          path: twrp/device/ulefone/Armor_X13
+
+      - name: Prepare TWRP build environment
+        shell: bash
+        working-directory: ${{ github.workspace }}/twrp
+        run: |
+          export USE_CCACHE=1
+          source build/envsetup.sh
+          lunch omni_Armor_X13-eng || true
+
+      - name: Build recovery image
+        shell: bash
+        working-directory: ${{ github.workspace }}/twrp
+        run: |
+          make -j"$(nproc)" recoveryimage
+
+      - name: Upload recovery artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-Armor_X13
+          path: |
+            ${{ github.workspace }}/twrp/out/target/product/Armor_X13/recovery.img
+            ${{ github.workspace }}/twrp/out/target/product/Armor_X13/recovery.tar
+          if-no-files-found: error
